@@ -1,0 +1,336 @@
+{
+  "name": "Revolution Fitness - WhatsApp AI Automation",
+  "flow": [
+    {
+      "id": 1,
+      "module": "whatsapp-business-cloud:watchEvents",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": "{{CONNECTION_WHATSAPP}}"
+      },
+      "mapper": {},
+      "metadata": {
+        "designer": { "x": 0, "y": 0 },
+        "restore": {},
+        "parameters": [
+          {
+            "name": "__IMTCONN__",
+            "type": "account:whatsapp-business-cloud",
+            "label": "Connection",
+            "required": true
+          }
+        ],
+        "expect": [
+          { "name": "messaging_product", "type": "text" },
+          { "name": "display_phone_number", "type": "text" },
+          { "name": "phone_number_id", "type": "text" },
+          { "name": "from", "type": "text" },
+          { "name": "timestamp", "type": "text" },
+          { "name": "type", "type": "text" },
+          { "name": "text", "type": "collection", "spec": [
+            { "name": "body", "type": "text" }
+          ]}
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "google-sheets:searchRows",
+      "version": 2,
+      "parameters": {
+        "__IMTCONN__": "{{CONNECTION_GOOGLE_SHEETS}}"
+      },
+      "mapper": {
+        "spreadsheetId": "{{SPREADSHEET_ID}}",
+        "sheetId": "{{SHEET_NAME}}",
+        "filter": [
+          {
+            "A": "Column",
+            "B": "phone_number",
+            "C": "Equal to",
+            "D": "{{1.from}}"
+          }
+        ],
+        "includeHeaders": "FirstRowIsHeaders",
+        "valueRenderOption": "FORMATTED_VALUE",
+        "limit": 1
+      },
+      "metadata": {
+        "designer": { "x": 300, "y": 0 },
+        "restore": {
+          "parameters": { "__IMTCONN__": { "label": "Google Sheets Connection" } }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "module": "openai:createCompletion",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": "{{CONNECTION_OPENAI}}"
+      },
+      "mapper": {
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are the official AI concierge for **Revolution Fitness 0044**, the premier gym in Kidwai Nagar, Kanpur.\n\n## Gym Details\n- **Owner:** Ankur Gupta\n- **Location:** Kidwai Nagar, Kanpur, Uttar Pradesh\n- **Unique Features:**\n  - Own in-house Supplement Store (Whey Protein, BCAAs, Pre-Workouts, and more)\n  - Cloud Kitchen serving high-protein, macro-friendly meals\n  - Fully imported, commercial-grade equipment from top international brands\n  - AC-enabled, spacious training floor\n  - Expert certified personal trainers\n\n## Your Behaviour Rules\n1. Always greet warmly in a friendly, motivational tone. Use Hindi-English mix (Hinglish) when the user writes in Hindi.\n2. Your PRIMARY GOAL in every conversation is to: (a) Collect the customer's **Name** and **Fitness Goal** (weight loss, muscle gain, general fitness, etc.). (b) Offer them a **FREE Trial Session** at the gym.\n3. If the customer asks about pricing or membership plans, tell them you can share the official price chart and ask if they'd like to receive it.\n4. Never invent prices. If asked for specific prices, say: \"Main aapko hamara official price chart bhej deta hoon, usme sab detail mein hai!\"\n5. Keep responses concise (under 150 words), friendly, and action-oriented.\n6. If the customer shares their name and goal, confirm it back and enthusiastically invite them for the free trial.\n7. Always end with a clear call-to-action (visit for trial, share the price chart, or ask another question).\n8. Do NOT discuss competitor gyms. Stay focused on Revolution Fitness.\n9. If someone asks who the owner is, proudly mention Ankur Gupta.\n10. Sign off messages with: — *Team Revolution Fitness 💪*\n\n## Context from Database\nExisting Customer Data (from Google Sheets lookup): {{2.`0`}}\nIf this is empty, treat the sender as a NEW lead."
+          },
+          {
+            "role": "user",
+            "content": "{{1.text.body}}"
+          }
+        ],
+        "max_tokens": 500,
+        "temperature": 0.7
+      },
+      "metadata": {
+        "designer": { "x": 600, "y": 0 },
+        "restore": {
+          "parameters": { "__IMTCONN__": { "label": "OpenAI Connection" } }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "module": "openai:transformTextToStructuredData",
+      "version": 1,
+      "parameters": {
+        "__IMTCONN__": "{{CONNECTION_OPENAI}}"
+      },
+      "mapper": {
+        "model": "gpt-4o-mini",
+        "prompt": "Analyse the following WhatsApp conversation between a customer and an AI gym concierge. Extract the following fields from the CUSTOMER's message (not the AI reply):\n\n1. customer_name — the customer's name if mentioned, else null\n2. fitness_goal — the customer's fitness goal if mentioned (e.g., weight loss, muscle gain, general fitness), else null\n3. price_chart_requested — boolean, true if the customer asked about pricing, rates, fees, membership cost, or the price chart, else false\n\nCustomer Message: {{1.text.body}}\n\nAI Reply: {{3.choices[].message.content}}",
+        "response_format": {
+          "type": "json_schema",
+          "json_schema": {
+            "name": "extracted_data",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "customer_name": { "type": ["string", "null"] },
+                "fitness_goal": { "type": ["string", "null"] },
+                "price_chart_requested": { "type": "boolean" }
+              },
+              "required": ["customer_name", "fitness_goal", "price_chart_requested"]
+            }
+          }
+        },
+        "temperature": 0
+      },
+      "metadata": {
+        "designer": { "x": 900, "y": 0 },
+        "restore": {
+          "parameters": { "__IMTCONN__": { "label": "OpenAI Connection" } }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": null,
+      "metadata": {
+        "designer": { "x": 1200, "y": 0 }
+      },
+      "routes": [
+        {
+          "flow": [
+            {
+              "id": 6,
+              "module": "whatsapp-business-cloud:sendMessage",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": "{{CONNECTION_WHATSAPP}}"
+              },
+              "mapper": {
+                "phoneNumberId": "{{WHATSAPP_PHONE_NUMBER_ID}}",
+                "to": "{{1.from}}",
+                "type": "text",
+                "text": {
+                  "body": "{{3.choices[].message.content}}"
+                }
+              },
+              "metadata": {
+                "designer": { "x": 1500, "y": -300 },
+                "restore": {
+                  "parameters": { "__IMTCONN__": { "label": "WhatsApp Connection" } }
+                }
+              }
+            }
+          ],
+          "label": "Path 1: Standard Reply"
+        },
+        {
+          "flow": [
+            {
+              "id": 7,
+              "module": "builtin:BasicFeeder",
+              "version": 1,
+              "parameters": {},
+              "mapper": {
+                "searchResultCount": "{{2.totalResults}}"
+              },
+              "metadata": {
+                "designer": { "x": 1500, "y": 0 }
+              },
+              "routes": [
+                {
+                  "flow": [
+                    {
+                      "id": 8,
+                      "module": "google-sheets:addRow",
+                      "version": 2,
+                      "parameters": {
+                        "__IMTCONN__": "{{CONNECTION_GOOGLE_SHEETS}}"
+                      },
+                      "mapper": {
+                        "spreadsheetId": "{{SPREADSHEET_ID}}",
+                        "sheetId": "{{SHEET_NAME}}",
+                        "values": {
+                          "phone_number": "{{1.from}}",
+                          "customer_name": "{{4.customer_name}}",
+                          "fitness_goal": "{{4.fitness_goal}}",
+                          "first_contact": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}",
+                          "last_contact": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}",
+                          "status": "New Lead"
+                        },
+                        "includeHeaders": "FirstRowIsHeaders",
+                        "valueInputOption": "USER_ENTERED"
+                      },
+                      "metadata": {
+                        "designer": { "x": 1800, "y": -100 },
+                        "restore": {
+                          "parameters": { "__IMTCONN__": { "label": "Google Sheets Connection" } }
+                        }
+                      },
+                      "filter": {
+                        "name": "New Contact (No Existing Row)",
+                        "conditions": [
+                          [
+                            {
+                              "a": "{{2.totalResults}}",
+                              "b": "0",
+                              "o": "number:equal"
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ],
+                  "label": "If New Contact"
+                },
+                {
+                  "flow": [
+                    {
+                      "id": 9,
+                      "module": "google-sheets:updateRow",
+                      "version": 2,
+                      "parameters": {
+                        "__IMTCONN__": "{{CONNECTION_GOOGLE_SHEETS}}"
+                      },
+                      "mapper": {
+                        "spreadsheetId": "{{SPREADSHEET_ID}}",
+                        "sheetId": "{{SHEET_NAME}}",
+                        "rowNumber": "{{2.`__ROW_NUMBER__`}}",
+                        "values": {
+                          "customer_name": "{{ifempty(4.customer_name; 2.customer_name)}}",
+                          "fitness_goal": "{{ifempty(4.fitness_goal; 2.fitness_goal)}}",
+                          "last_contact": "{{formatDate(now; \"YYYY-MM-DD HH:mm:ss\")}}",
+                          "status": "Returning Lead"
+                        },
+                        "includeHeaders": "FirstRowIsHeaders",
+                        "valueInputOption": "USER_ENTERED"
+                      },
+                      "metadata": {
+                        "designer": { "x": 1800, "y": 100 },
+                        "restore": {
+                          "parameters": { "__IMTCONN__": { "label": "Google Sheets Connection" } }
+                        }
+                      },
+                      "filter": {
+                        "name": "Existing Contact (Row Found)",
+                        "conditions": [
+                          [
+                            {
+                              "a": "{{2.totalResults}}",
+                              "b": "0",
+                              "o": "number:greater"
+                            }
+                          ]
+                        ]
+                      }
+                    }
+                  ],
+                  "label": "If Existing Contact"
+                }
+              ]
+            }
+          ],
+          "label": "Path 2: Data Management"
+        },
+        {
+          "flow": [
+            {
+              "id": 10,
+              "module": "whatsapp-business-cloud:sendMessage",
+              "version": 1,
+              "parameters": {
+                "__IMTCONN__": "{{CONNECTION_WHATSAPP}}"
+              },
+              "mapper": {
+                "phoneNumberId": "{{WHATSAPP_PHONE_NUMBER_ID}}",
+                "to": "{{1.from}}",
+                "type": "document",
+                "document": {
+                  "link": "{{PRICE_CHART_PDF_URL}}",
+                  "caption": "📋 Here is the official Revolution Fitness Price Chart! Feel free to reach out if you have any questions. 💪",
+                  "filename": "Revolution_Fitness_Price_Chart.pdf"
+                }
+              },
+              "metadata": {
+                "designer": { "x": 1500, "y": 300 },
+                "restore": {
+                  "parameters": { "__IMTCONN__": { "label": "WhatsApp Connection" } }
+                }
+              }
+            }
+          ],
+          "label": "Path 3: Price Chart",
+          "filter": {
+            "name": "Price Chart Requested = TRUE",
+            "conditions": [
+              [
+                {
+                  "a": "{{4.price_chart_requested}}",
+                  "b": "true",
+                  "o": "boolean:equal"
+                }
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "instant": true,
+    "version": 1,
+    "scenario": {
+      "roundtrips": 1,
+      "maxErrors": 3,
+      "autoCommit": true,
+      "autoCommitTriggerLast": true,
+      "sequential": false,
+      "confidential": false,
+      "dataloss": false,
+      "dlq": false,
+      "freshVariables": false
+    },
+    "designer": {
+      "orphans": []
+    },
+    "zone": "ap-south-1"
+  }
+}
